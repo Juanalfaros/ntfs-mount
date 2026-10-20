@@ -10,7 +10,7 @@ skp()  { skip=$((skip+1)); echo "  skip  $1"; }
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 
 echo "Syntax"
-for f in ntfsmount-helper install-root.sh uninstall-root.sh setup-signing.sh build.sh install.sh package.sh test.sh; do
+for f in ntfsmount-helper install-root.sh uninstall-root.sh setup-signing.sh build.sh install.sh install-from-source.sh package.sh test.sh release/build-ntfs3g.sh release/build-app.sh; do
     if sh -n "$f" 2>/dev/null; then ok "$f"; else bad "$f"; fi
 done
 if swiftc -typecheck main.swift Parsing.swift Localization.swift Backend.swift 2>"$TMP/swift.err"; then ok "main.swift (typecheck)"; else bad "main.swift" "$(head -3 "$TMP/swift.err")"; fi

@@ -1,0 +1,40 @@
+name: release
+
+# Builds the files install.sh downloads: the universal app, and ntfs-3g built against FUSE-T (plus the exact
+# ntfs-3g source it came from, as the GPL asks). Run it by hand to get the files as a workflow artifact without
+# publishing anything; pushing a tag like v2.0.0 also attaches them to that GitHub release.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests
+        run: sh test.sh
+      - name: Build ntfs-3g for FUSE-T
+        run: sh release/build-ntfs3g.sh dist
+      - name: Build the app
+        run: sh release/build-app.sh dist
+      - name: Checksums
+        run: |
+          cd dist
+          shasum -a 256 NTFS-Mount-app.zip ntfs-3g-fuse-t-universal.tar.gz ntfs-3g_ntfsprogs-*.tgz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          path: dist/*
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "NTFS Mount ${GITHUB_REF_NAME#v}" --notes "See CHANGELOG.md"
+          gh release upload "$GITHUB_REF_NAME" dist/* --clobber

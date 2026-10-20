@@ -153,6 +153,11 @@ private func privilegedRun(_ args: [String]) -> (ok: Bool, out: String) {
     return runAsAdmin("NTFSMOUNT_UNSAFE_BIN=1 " + (["/bin/sh", h] + args).map(shq).joined(separator: " ") + " 2>&1")
 }
 
+/// Whether the app can open raw disks (macOS "Full Disk Access"); the helper tries it as root under our process tree.
+func hasFullDiskAccess() -> Bool {
+    run("/usr/bin/sudo", ["-n", helperPath, "fdacheck"]).status == 0
+}
+
 func installHelper() -> (ok: Bool, out: String) {
     guard let helper = bundledHelper, let installer = bundledInstaller else {
         return (false, L("Installation files are missing from the app."))
@@ -738,6 +743,7 @@ final class SetupModel: ObservableObject {
     @Published var privateCopy: String?
     @Published var stale = false
     @Published var helper = false
+    @Published var fda: Bool?                // Full Disk Access; nil until the helper can tell
     @Published var fuseIssue: String?
     @Published var login = SMAppService.mainApp.status == .enabled
     @Published var disks: [KnownDisk] = []
@@ -750,7 +756,7 @@ final class SetupModel: ObservableObject {
     }
 
     var installed: Bool { fuse != nil && ntfs3g != nil }
-    var complete: Bool { installed && fuseIssue == nil && helper }
+    var complete: Bool { installed && fuseIssue == nil && helper && fda == true }
 
     func reload() {
         reloadDisks()
@@ -766,8 +772,10 @@ final class SetupModel: ObservableObject {
             let copy = stamp.flatMap { cellarVersion($0) } ?? priv
             let st = copyStatus().stale
             let h = helperReady
+            let f = h ? hasFullDiskAccess() : nil
             DispatchQueue.main.async {
                 (self.fuse, self.kext, self.ntfs3g, self.privateCopy, self.stale, self.helper) = (fuse, k, n, copy, st, h)
+                self.fda = f
                 self.fuseIssue = issue
                 self.login = SMAppService.mainApp.status == .enabled
                 self.loading = false
@@ -965,6 +973,12 @@ struct WelcomeView: View {
                     detail: L("Just once: after that, disks mount on their own without asking for your password."),
                     action: model.helper ? nil : (L("Turn on…"), { delegate.installHelperAction() }),
                     enabled: model.installed, model: model)
+            StepRow(n: 4, done: model.fda == true, title: L("Allow Full Disk Access"),
+                    detail: L("macOS asks for your OK once so NTFS Mount can open the disks: add NTFS Mount to the list and turn it on."),
+                    action: model.fda == true ? nil : (L("Open Full Disk Access"), {
+                        if let u = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") { NSWorkspace.shared.open(u) }
+                    }),
+                    enabled: model.helper, model: model)
             Divider()
             Toggle(L("Open NTFS Mount at login"), isOn: Binding(
                 get: { model.login },
@@ -2180,6 +2194,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifica
                 ask(L("Eject all disks?"), L("A ntfsmount://eject-all link asked to eject all disks."),
                     [L("Eject"), L("Cancel")]) { i in if i == 0 { self.ejectAll() } }
             case "ajustes", "settings": showSettings()
+            case "bienvenida", "welcome": showWelcome()
             default: break
             }
         }

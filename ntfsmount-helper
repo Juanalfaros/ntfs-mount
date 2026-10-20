@@ -10,6 +10,7 @@
 #   ntfsmount-helper eject   <diskN>          (unmounts every FUSE volume on it, then ejects)
 #   ntfsmount-helper cleanup <mountpoint>     (removes an empty, unmounted /Volumes folder)
 #   ntfsmount-helper noindex <mountpoint>     (tells Spotlight not to index the volume)
+#   ntfsmount-helper fdacheck                 (exit 0 if the app that called us has Full Disk Access)
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
 
 # Root-owned private copy made by install-root.sh. Homebrew's prefix is writable by the
@@ -165,6 +166,12 @@ cleanup)
     mount | grep -qF " on $2 (" && die "$2 is mounted"
     exec rmdir "$2"
     ;;
+fdacheck)
+    # Root is not enough to open a raw disk: macOS also wants Full Disk Access for the app we run under.
+    # Reading 512 bytes of the internal disk tells which side of that line we are on.
+    dd if=/dev/rdisk0 of=/dev/null bs=512 count=1 >/dev/null 2>&1
+    exit $?
+    ;;
 noindex)
     is_mp "$2" || die "invalid mount point"
     is_fuse "$2" || die "$2 is not a FUSE mount"
@@ -173,6 +180,6 @@ noindex)
     exec touch "$2/.metadata_never_index"
     ;;
 *)
-    die "usage: ntfsmount-helper mount|fix|unmount|unmountall|eject|cleanup|noindex|loadfuse ..."
+    die "usage: ntfsmount-helper mount|fix|unmount|unmountall|eject|cleanup|noindex|loadfuse|fdacheck ..."
     ;;
 esac

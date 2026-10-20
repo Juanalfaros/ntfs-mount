@@ -13,6 +13,7 @@
 "Advanced" = "Avanzado";
 "All good" = "Correcto";
 "All set. Plug in a Windows disk and it will appear in the menu bar." = "Todo listo. Conecta un disco de Windows y aparecerá en la barra de menús.";
+"Allow Full Disk Access" = "Permitir el Acceso total al disco";
 "Always read-only" = "Siempre solo lectura";
 "Automatic" = "Automático";
 "Calculating…" = "Calculando…";
@@ -95,6 +96,7 @@
 "Not now" = "Ahora no";
 "Only {0} left of {1}." = "Quedan {0} libres de {1}.";
 "Open" = "Abrir";
+"Open Full Disk Access" = "Abrir Acceso total al disco";
 "Open NTFS Mount at login" = "Abrir NTFS Mount al iniciar sesión";
 "Open Privacy & Security" = "Abrir Privacidad y seguridad";
 "Open Settings" = "Abrir Ajustes";
@@ -180,6 +182,7 @@
 "full in ~{0}" = "se llena en ~{0}";
 "installed" = "instalado";
 "loaded" = "cargada";
+"macOS asks for your OK once so NTFS Mount can open the disks: add NTFS Mount to the list and turn it on." = "macOS pide tu permiso una vez para que NTFS Mount pueda abrir los discos: agrega NTFS Mount a la lista y actívalo.";
 "macOS blocked access to the disk" = "macOS bloqueó el acceso al disco";
 "max. {0}" = "máx. {0}";
 "needs attention" = "requiere atención";
