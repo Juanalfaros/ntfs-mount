@@ -1,0 +1,6 @@
+.DS_Store
+*.o
+build/
+*.p12
+*.pem
+dist/

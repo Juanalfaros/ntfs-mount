@@ -1,0 +1,149 @@
+#!/bin/sh
+# Privileged helper for NTFS Mount. Installed root-owned in /usr/local/libexec and
+# run through sudo (NOPASSWD rule), so every argument is validated here.
+#
+#   ntfsmount-helper mount   <diskNsM> <name> [force] [winnames]
+#   ntfsmount-helper loadfuse                 (loads the macFUSE kernel extension, prints why if it cannot)
+#   ntfsmount-helper fix     <diskNsM>
+#   ntfsmount-helper unmount <mountpoint>
+#   ntfsmount-helper unmountall
+#   ntfsmount-helper eject   <diskN>          (unmounts every FUSE volume on it, then ejects)
+#   ntfsmount-helper cleanup <mountpoint>     (removes an empty, unmounted /Volumes folder)
+#   ntfsmount-helper noindex <mountpoint>     (tells Spotlight not to index the volume)
+PATH=/usr/bin:/bin:/usr/sbin:/sbin
+
+# Root-owned private copy made by install-root.sh. Homebrew's prefix is writable by the
+# user, so running ntfs-3g from there as root would be a privilege escalation. The only
+# exception is the bundled-helper fallback (password prompt), which sets NTFSMOUNT_UNSAFE_BIN=1;
+# sudo drops that variable, so the NOPASSWD path can never use it.
+BIN=/usr/local/libexec/ntfsmount/bin
+if [ ! -x "$BIN/ntfs-3g" ]; then
+    BIN=""
+    if [ "$NTFSMOUNT_UNSAFE_BIN" = 1 ]; then
+        for d in /opt/homebrew/bin /usr/local/bin; do
+            if [ -x "$d/ntfs-3g" ]; then BIN="$d"; break; fi
+        done
+    fi
+fi
+
+die() { echo "$*" >&2; exit 2; }
+nl='
+'
+one_line() { case "$1" in *"$nl"*) return 1 ;; esac; }
+is_part() { one_line "$1" && echo "$1" | grep -Eq '^disk[0-9]+s[0-9]+$'; }
+is_disk() { one_line "$1" && echo "$1" | grep -Eq '^disk[0-9]+$'; }
+is_mp()   { one_line "$1" && echo "$1" | grep -Eq '^/Volumes/[^/]+$' && ! echo "$1" | grep -q '\.\.'; }
+# the partition must be NTFS (or one of ours already mounted through FUSE); never touch other volumes
+is_ntfs_dev() {
+    # plist keys are not localised, unlike the text output of `diskutil info`
+    t=$(diskutil info -plist "$1" 2>/dev/null | plutil -extract FilesystemType raw -o - - 2>/dev/null | tr '[:upper:]' '[:lower:]')
+    case "$t" in ntfs|macfuse|fusefs|osxfuse) return 0 ;; esac
+    mount | grep -q "^$1 on .*macfuse"
+}
+is_fuse() { mount | grep -F " on $1 (" | grep -q macfuse; }
+
+# mount points of macFUSE volumes; $1 = optional regex for the device (default: any disk)
+fuse_mps() { mount | sed -n "s|^/dev/${1:-disk[0-9]*s[0-9]*} on \(.*\) (macfuse.*|\1|p"; }
+
+# macFUSE ships one kext per macOS generation (Extensions/<major>/); find this system's bundle id.
+fuse_kext_id() {
+    major=$(sw_vers -productVersion | cut -d. -f1)
+    /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" \
+        "/Library/Filesystems/macfuse.fs/Contents/Extensions/$major/macfuse.kext/Contents/Info.plist" 2>/dev/null
+}
+load_fuse() {
+    [ -e /dev/macfuse0 ] && return 0
+    id=$(fuse_kext_id)
+    [ -n "$id" ] || { echo "macFUSE extension not found for this macOS version" >&2; return 1; }
+    kmutil load -b "$id" 2>&1
+}
+
+[ -n "$BIN" ] || die "the secure ntfs-3g copy is missing: use “Turn on passwordless mounting…”"
+
+case "$1" in
+mount)
+    dev="$2"; name="$3"
+    flags=""; i=0
+    for a in "$@"; do i=$((i+1)); [ $i -ge 4 ] && flags="$flags $a"; done
+    is_part "$dev" || die "invalid device"
+    is_ntfs_dev "/dev/$dev" || die "/dev/$dev is not an NTFS volume"
+    # volume labels may hold anything: neutralise what would break the path or the option string
+    name=$(printf '%s' "$name" | tr '/,\\' '---' | tr -d '\r\n' | sed 's/\.\.*/./g; s/^\.*//')
+    case "$name" in "") die "invalid volume name" ;; esac
+    base="/Volumes/$name"; mp="$base"; n=1
+    load_fuse >/dev/null 2>&1
+    # macOS usually already mounted it read-only on the very same /Volumes/<name>
+    diskutil unmount "/dev/$dev" >/dev/null 2>&1
+    mount | grep -q "^/dev/$dev on " && diskutil unmount force "/dev/$dev" >/dev/null 2>&1
+    mount | grep -q "^/dev/$dev on " && die "could not unmount /dev/$dev (are there open files on the disk?)"
+    # another volume with the same name: use "name 1", "name 2"... like Finder does
+    while mount | grep -qF " on $mp (" || [ -n "$(ls -A "$mp" 2>/dev/null)" ]; do
+        mp="$base $n"; n=$((n+1))
+        [ $n -gt 20 ] && die "too many volumes named $name"
+    done
+    existed=1; [ -d "$mp" ] || { existed=0; mkdir "$mp" || die "could not create $mp"; }
+    opts="local,allow_other,auto_xattr,noappledouble,volname=$name"
+    # show the files as the invoking user's (sudo sets these), not root's
+    case "$SUDO_UID:$SUDO_GID" in
+        *[!0-9:]*|:*|*:) ;;
+        *) [ "$SUDO_UID" -gt 0 ] 2>/dev/null && opts="$opts,uid=$SUDO_UID,gid=$SUDO_GID" ;;
+    esac
+    case " $flags " in *" force "*) opts="$opts,remove_hiberfile" ;; esac
+    case " $flags " in *" winnames "*) opts="$opts,windows_names" ;; esac
+    out=$("$BIN/ntfs-3g" "/dev/$dev" "$mp" -o "$opts" 2>&1); rc=$?
+    [ -n "$out" ] && echo "$out"
+    if [ $rc -ne 0 ]; then
+        [ $existed -eq 0 ] && rmdir "$mp" 2>/dev/null
+        exit $rc
+    fi
+    # ntfs-3g returns slightly before the mount shows up; don't report success too early
+    i=0; while [ $i -lt 50 ] && ! is_fuse "$mp"; do sleep 0.1; i=$((i+1)); done
+    if ! is_fuse "$mp"; then
+        [ $existed -eq 0 ] && rmdir "$mp" 2>/dev/null
+        die "ntfs-3g finished but the volume did not show up mounted"
+    fi
+    ;;
+loadfuse)
+    load_fuse
+    exit $?
+    ;;
+fix)
+    dev="$2"
+    is_part "$dev" || die "invalid device"
+    is_ntfs_dev "/dev/$dev" || die "/dev/$dev is not an NTFS volume"
+    diskutil unmount "/dev/$dev" >/dev/null 2>&1
+    exec "$BIN/ntfsfix" -d "/dev/$dev"
+    ;;
+unmount)
+    is_mp "$2" || die "invalid mount point"
+    is_fuse "$2" || die "$2 is not a macFUSE mount"
+    exec umount "$2"
+    ;;
+unmountall)
+    # a pipe's subshell can't set our variables, so collect failures in a temp file
+    f=$(mktemp) || exit 1
+    fuse_mps | while IFS= read -r mp; do umount "$mp" || echo "$mp" >> "$f"; done
+    if [ -s "$f" ]; then echo "could not unmount: $(tr '\n' ' ' < "$f")" >&2; rm -f "$f"; exit 1; fi
+    rm -f "$f"
+    ;;
+eject)
+    is_disk "$2" || die "invalid disk"
+    fuse_mps "$2"'s[0-9]*' | while IFS= read -r mp; do umount "$mp" || exit 1; done || exit 1
+    exec diskutil eject "/dev/$2"
+    ;;
+cleanup)
+    is_mp "$2" || die "invalid mount point"
+    mount | grep -qF " on $2 (" && die "$2 is mounted"
+    exec rmdir "$2"
+    ;;
+noindex)
+    is_mp "$2" || die "invalid mount point"
+    is_fuse "$2" || die "$2 is not a macFUSE mount"
+    # the disk is untrusted: never let root follow a symlink planted at that name
+    [ -L "$2/.metadata_never_index" ] && die "unexpected symbolic link"
+    exec touch "$2/.metadata_never_index"
+    ;;
+*)
+    die "usage: ntfsmount-helper mount|fix|unmount|unmountall|eject|cleanup|noindex|loadfuse ..."
+    ;;
+esac
