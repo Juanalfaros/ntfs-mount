@@ -13,28 +13,40 @@ echo "Syntax"
 for f in ntfsmount-helper install-root.sh uninstall-root.sh setup-signing.sh build.sh install.sh package.sh test.sh; do
     if sh -n "$f" 2>/dev/null; then ok "$f"; else bad "$f"; fi
 done
-if swiftc -typecheck main.swift Parsing.swift Localization.swift 2>"$TMP/swift.err"; then ok "main.swift (typecheck)"; else bad "main.swift" "$(head -3 "$TMP/swift.err")"; fi
+if swiftc -typecheck main.swift Parsing.swift Localization.swift Backend.swift 2>"$TMP/swift.err"; then ok "main.swift (typecheck)"; else bad "main.swift" "$(head -3 "$TMP/swift.err")"; fi
 
 echo "Swift functions (Parsing.swift)"
 mkdir -p "$TMP/tm"
 cat > "$TMP/tm/main.swift" <<'SW'
 import Foundation
 func check(_ c: Bool, _ m: String) { if !c { print("FAIL \(m)"); exit(1) } }
-let out = """
+let ps = """
+  501 123 /Applications/Foo.app/Contents/MacOS/Foo
+/usr/local/libexec/ntfsmount/bin/ntfs-3g /dev/disk4s1 /Volumes/Backup (2) -o local,allow_other,auto_xattr
+/usr/local/libexec/ntfsmount/bin/ntfs-3g /dev/disk5s1 /Volumes/Data on Mac -o rw,backend=nfs,volname=Data on Mac
+/usr/local/libexec/ntfsmount/bin/ntfs-3g /dev/disk6s1 /Volumes/Gone -o rw
+/usr/local/libexec/ntfsmount/bin/ntfs-3g /dev/disk7s2 /Volumes/NoOptions
+sshfs host:/ /Volumes/remote
+"""
+let mnt = """
 /dev/disk3s1s1 on / (apfs, sealed, local, read-only, journaled)
 /dev/disk4s1 on /Volumes/Backup (2) (macfuse, local, nodev, nosuid, synchronous, mounted by user)
-/dev/disk5s1 on /Volumes/Data on Mac (macfuse, nodev)
-macfuse@osxfuse0 on /Volumes/x (macfuse, nodev)
+fuse-t:/Data on Mac on /Volumes/Data on Mac (nfs, nodev, nosuid, mounted by user)
+/dev/disk7s2 on /Volumes/NoOptions (macfuse, nodev)
 """
-let m = parseFuseMounts(out)
-check(m["disk4s1"] == "/Volumes/Backup (2)", "paréntesis en el nombre: \(m)")
-check(m["disk5s1"] == "/Volumes/Data on Mac", "' on ' en el nombre")
-check(m.count == 2, "solo discos")
+let m = parseNtfs3gMounts(ps: ps, mount: mnt)
+check(m["disk4s1"] == "/Volumes/Backup (2)", "macFUSE, parenthesis in the name: \(m)")
+check(m["disk5s1"] == "/Volumes/Data on Mac", "FUSE-T (no device in mount), ' on ' in the name: \(m)")
+check(m["disk6s1"] == nil, "a process whose volume is not mounted is ignored")
+check(m["disk7s2"] == "/Volumes/NoOptions", "no -o options")
+check(m.count == 3, "only ntfs-3g volumes: \(m)")
+check(fuseTVersion(fromBinaryNames: ["go-nfsv4", "go-nfsv4-1.2.9", "go-nfsv4-1.10.0"]) == "1.10.0", "FUSE-T version")
+check(fuseTVersion(fromBinaryNames: ["go-nfsv4"]) == nil, "FUSE-T version without a suffix")
 check(cellarVersion("/opt/homebrew/Cellar/ntfs-3g-mac/2026.7.7/bin/ntfs-3g") == "2026.7.7", "cellar")
 check(isNewer("5.10", than: "5.9") && !isNewer("5.9", than: "5.10"), "isNewer numérico")
 print("ok")
 SW
-if swiftc -o "$TMP/t" Parsing.swift "$TMP/tm/main.swift" 2>"$TMP/t.err" && "$TMP/t" >"$TMP/t.out" 2>&1 && grep -q '^ok' "$TMP/t.out"; then ok "parseFuseMounts, cellarVersion, isNewer"; else bad "Parsing.swift" "$(cat "$TMP/t.err" "$TMP/t.out" | head -3)"; fi
+if swiftc -o "$TMP/t" Parsing.swift "$TMP/tm/main.swift" 2>"$TMP/t.err" && "$TMP/t" >"$TMP/t.out" 2>&1 && grep -q '^ok' "$TMP/t.out"; then ok "parseNtfs3gMounts, fuseTVersion, cellarVersion, isNewer"; else bad "Parsing.swift" "$(cat "$TMP/t.err" "$TMP/t.out" | head -3)"; fi
 
 echo "Helper validation (must refuse without touching anything)"
 nl='

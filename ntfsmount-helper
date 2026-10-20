@@ -3,7 +3,7 @@
 # run through sudo (NOPASSWD rule), so every argument is validated here.
 #
 #   ntfsmount-helper mount   <diskNsM> <name> [force] [winnames]
-#   ntfsmount-helper loadfuse                 (loads the macFUSE kernel extension, prints why if it cannot)
+#   ntfsmount-helper loadfuse                 (macFUSE only: loads the kernel extension, prints why if it cannot)
 #   ntfsmount-helper fix     <diskNsM>
 #   ntfsmount-helper unmount <mountpoint>
 #   ntfsmount-helper unmountall
@@ -26,6 +26,11 @@ if [ ! -x "$BIN/ntfs-3g" ]; then
     fi
 fi
 
+# Which FUSE layer the private copy was built for (written by install-root.sh). Anything else is macFUSE,
+# which is what installs made by 1.x use.
+BACKEND=$(cat /usr/local/libexec/ntfsmount/BACKEND 2>/dev/null)
+[ "$BACKEND" = fuse-t ] || BACKEND=macfuse
+
 die() { echo "$*" >&2; exit 2; }
 nl='
 '
@@ -40,10 +45,16 @@ is_ntfs_dev() {
     case "$t" in ntfs|macfuse|fusefs|osxfuse) return 0 ;; esac
     mount | grep -q "^$1 on .*macfuse"
 }
-is_fuse() { mount | grep -F " on $1 (" | grep -q macfuse; }
+# a volume of ours: macFUSE lists "/dev/diskNsM on /Volumes/X (macfuse…)", FUSE-T "fuse-t:/X on /Volumes/X (nfs…)"
+is_fuse() { mount | grep -F " on $1 (" | grep -qE "macfuse|^fuse-t:"; }
 
-# mount points of macFUSE volumes; $1 = optional regex for the device (default: any disk)
-fuse_mps() { mount | sed -n "s|^/dev/${1:-disk[0-9]*s[0-9]*} on \(.*\) (macfuse.*|\1|p"; }
+# mount points served by our own ntfs-3g (its command line is "…/ntfs-3g /dev/diskNsM <mountpoint> -o …"), so
+# unrelated FUSE-T or macFUSE volumes are never touched. $1 = optional regex for the device (default: any disk)
+fuse_mps() {
+    ps -axww -o command= | sed -n "s|^[^ ]*/ntfs-3g /dev/${1:-disk[0-9]*s[0-9]*} \(.*\) -o .*|\1|p" | while IFS= read -r mp; do
+        is_fuse "$mp" && printf '%s\n' "$mp"
+    done
+}
 
 # macFUSE ships one kext per macOS generation (Extensions/<major>/); find this system's bundle id.
 fuse_kext_id() {
@@ -52,6 +63,7 @@ fuse_kext_id() {
         "/Library/Filesystems/macfuse.fs/Contents/Extensions/$major/macfuse.kext/Contents/Info.plist" 2>/dev/null
 }
 load_fuse() {
+    [ "$BACKEND" = fuse-t ] && return 0     # FUSE-T has no kernel extension
     [ -e /dev/macfuse0 ] && return 0
     id=$(fuse_kext_id)
     [ -n "$id" ] || { echo "macFUSE extension not found for this macOS version" >&2; return 1; }
@@ -82,7 +94,12 @@ mount)
         [ $n -gt 20 ] && die "too many volumes named $name"
     done
     existed=1; [ -d "$mp" ] || { existed=0; mkdir "$mp" || die "could not create $mp"; }
-    opts="local,allow_other,auto_xattr,noappledouble,volname=$name"
+    if [ "$BACKEND" = fuse-t ]; then
+        # FUSE-T serves the volume over NFS (its SMB backend failed our write tests)
+        opts="rw,backend=nfs,noappledouble,volname=$name"
+    else
+        opts="local,allow_other,auto_xattr,noappledouble,volname=$name"
+    fi
     # show the files as the invoking user's (sudo sets these), not root's
     case "$SUDO_UID:$SUDO_GID" in
         *[!0-9:]*|:*|*:) ;;
@@ -90,14 +107,26 @@ mount)
     esac
     case " $flags " in *" force "*) opts="$opts,remove_hiberfile" ;; esac
     case " $flags " in *" winnames "*) opts="$opts,windows_names" ;; esac
-    out=$("$BIN/ntfs-3g" "/dev/$dev" "$mp" -o "$opts" 2>&1); rc=$?
+    # ntfs-3g usually forks into the background and returns, but do not rely on it (a layer that keeps it in the
+    # foreground would hang us): run it aside, then wait for the mount to show up or for ntfs-3g to fail.
+    logf=$(mktemp) || die "could not create a temporary file"
+    "$BIN/ntfs-3g" "/dev/$dev" "$mp" -o "$opts" >"$logf" 2>&1 &
+    pid=$!
+    rc=""; i=0
+    while [ $i -lt 150 ]; do   # up to 15 s: a cold NFS server or a big volume can take a few seconds
+        is_fuse "$mp" && break
+        if [ -z "$rc" ] && ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid"; rc=$?
+            [ "$rc" -ne 0 ] && break
+        fi
+        sleep 0.1; i=$((i+1))
+    done
+    out=$(cat "$logf"); rm -f "$logf"
     [ -n "$out" ] && echo "$out"
-    if [ $rc -ne 0 ]; then
+    if [ "${rc:-0}" -ne 0 ]; then
         [ $existed -eq 0 ] && rmdir "$mp" 2>/dev/null
-        exit $rc
+        exit "$rc"
     fi
-    # ntfs-3g returns slightly before the mount shows up; don't report success too early
-    i=0; while [ $i -lt 50 ] && ! is_fuse "$mp"; do sleep 0.1; i=$((i+1)); done
     if ! is_fuse "$mp"; then
         [ $existed -eq 0 ] && rmdir "$mp" 2>/dev/null
         die "ntfs-3g finished but the volume did not show up mounted"
@@ -116,7 +145,7 @@ fix)
     ;;
 unmount)
     is_mp "$2" || die "invalid mount point"
-    is_fuse "$2" || die "$2 is not a macFUSE mount"
+    is_fuse "$2" || die "$2 is not a FUSE mount"
     exec umount "$2"
     ;;
 unmountall)
@@ -138,7 +167,7 @@ cleanup)
     ;;
 noindex)
     is_mp "$2" || die "invalid mount point"
-    is_fuse "$2" || die "$2 is not a macFUSE mount"
+    is_fuse "$2" || die "$2 is not a FUSE mount"
     # the disk is untrusted: never let root follow a symlink planted at that name
     [ -L "$2/.metadata_never_index" ] && die "unexpected symbolic link"
     exec touch "$2/.metadata_never_index"

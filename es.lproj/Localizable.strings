@@ -4,8 +4,8 @@
 "1. Plug it back in. If it mounts with write access, check the last files you copied.\n" = "1. Vuelve a conectarlo. Si se monta con escritura, revisa los últimos archivos que copiaste.\n";
 "2. If it doesn’t mount or shows errors, use “Repair with ntfsfix…” under “More options” for the disk.\n" = "2. Si no se monta o da errores, usa «Reparar con ntfsfix…» en «Más opciones» del disco.\n";
 "3. For a full check, connect it to a Windows PC and run chkdsk /f.\n\n" = "3. Para una revisión completa, conéctalo a un PC con Windows y ejecuta chkdsk /f.\n\n";
-"A new version of macFUSE is available" = "Hay una versión nueva de macFUSE";
 "A new version of ntfs-3g is available" = "Hay una versión nueva de ntfs-3g";
+"A new version of {0} is available" = "Hay una versión nueva de {0}";
 "A ntfsmount://eject-all link asked to eject all disks." = "Un enlace ntfsmount://expulsar pidió expulsar todos los discos.";
 "A read-only disk is never mounted with write access automatically. You can mount it with write access once from its card in the menu." = "Un disco en solo lectura nunca se monta con escritura automáticamente. Puedes montarlo con escritura una vez desde su tarjeta en el menú.";
 "Active · copy {0}" = "Activo · copia {0}";
@@ -17,7 +17,7 @@
 "Automatic" = "Automático";
 "Calculating…" = "Calculando…";
 "Cancel" = "Cancelar";
-"Check for macFUSE updates…" = "Buscar actualizaciones de macFUSE…";
+"Check for {0} updates…" = "Buscar actualizaciones de {0}…";
 "Close" = "Cerrar";
 "Close the open files on the disk and try again." = "Cierra los archivos abiertos del disco e inténtalo de nuevo.";
 "Close window" = "Cerrar ventana";
@@ -33,7 +33,7 @@
 "Couldn’t check" = "No se pudo comprobar";
 "Couldn’t eject {0}" = "No se pudo expulsar {0}";
 "Couldn’t eject “{0}”" = "No se pudo expulsar «{0}»";
-"Couldn’t load the macFUSE extension." = "No se pudo cargar la extensión de macFUSE.";
+"Couldn’t load the {0} extension." = "No se pudo cargar la extensión de {0}.";
 "Couldn’t mount with write access" = "No se pudo montar con escritura";
 "Couldn’t repair “{0}”" = "No se pudo reparar «{0}»";
 "Couldn’t switch “{0}” to read-only" = "No se pudo pasar «{0}» a solo lectura";
@@ -59,8 +59,8 @@
 "General" = "General";
 "Get started" = "Empezar";
 "Give NTFS Mount “Full Disk Access” in System Settings > Privacy & Security, quit the app and open it again.\n\n{0}" = "Da «Acceso total al disco» a NTFS Mount en Ajustes del Sistema > Privacidad y seguridad, cierra la app y ábrela de nuevo.\n\n{0}";
-"Install macFUSE" = "Instalar macFUSE";
 "Install ntfs-3g" = "Instalar ntfs-3g";
+"Install {0}" = "Instalar {0}";
 "Installation files are missing from the app." = "Faltan archivos de instalación dentro de la app.";
 "Installed version: {0}" = "Versión instalada: {0}";
 "Installed, but macOS hasn’t loaded the extension. Approve it in Privacy & Security and restart." = "Instalado, pero macOS no ha cargado la extensión. Apruébala en Privacidad y seguridad y reinicia.";
@@ -180,10 +180,6 @@
 "full in ~{0}" = "se llena en ~{0}";
 "installed" = "instalado";
 "loaded" = "cargada";
-"macFUSE didn’t respond" = "macFUSE no respondió";
-"macFUSE is not active" = "macFUSE no está activo";
-"macFUSE is not active — see details…" = "macFUSE no está activo — ver detalles…";
-"macFUSE is up to date" = "macFUSE está al día";
 "macOS blocked access to the disk" = "macOS bloqueó el acceso al disco";
 "max. {0}" = "máx. {0}";
 "needs attention" = "requiere atención";
@@ -196,9 +192,14 @@
 "uninstall-root.sh is missing from the app." = "Falta uninstall-root.sh dentro de la app.";
 "working" = "trabajando";
 "{0} because these programs have files open on it:\n\n{1}\n\nSave your work and close them, or let NTFS Mount close them (they will ask if anything is unsaved)." = "{0} porque estos programas tienen archivos abiertos en él:\n\n{1}\n\nGuarda tu trabajo y ciérralos, o deja que NTFS Mount los cierre (te preguntarán si hay algo sin guardar).";
+"{0} didn’t respond" = "{0} no respondió";
 "{0} free of {1}" = "{0} libre de {1}";
+"{0} is not active" = "{0} no está activo";
+"{0} is not active — see details…" = "{0} no está activo — ver detalles…";
+"{0} is up to date" = "{0} está al día";
 "{0} used" = "{0} usado";
 "{0} · extension {1}" = "{0} · extensión {1}";
+"{0} · no kernel extension needed" = "{0} · no necesita extensión de kernel";
 "{0}% free" = "{0} % libre";
 "{0}\n\nIf macOS was updated recently, it may have disapproved the extension: approve it in System Settings > Privacy & Security (it may ask you to restart). If macFUSE is out of date, reinstall it from macfuse.github.io." = "{0}\n\nSi macOS se actualizó hace poco, puede haber desaprobado la extensión: apruébala en Ajustes del Sistema > Privacidad y seguridad (puede pedir reiniciar). Si macFUSE quedó desactualizado, reinstálalo desde macfuse.github.io.";
 "{0}\n\nThe extension may not be approved or loaded. See Settings > Advanced for details." = "{0}\n\nPuede que la extensión no esté aprobada o cargada. Mira Ajustes > Avanzado para ver el detalle.";

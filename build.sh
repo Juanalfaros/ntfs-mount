@@ -13,7 +13,7 @@ cp ntfsmount-helper install-root.sh uninstall-root.sh "$APP/Contents/Resources/"
 # Spanish texts (English is the built-in language: the keys in the code)
 mkdir -p "$APP/Contents/Resources/es.lproj"
 cp es.lproj/Localizable.strings es.lproj/InfoPlist.strings "$APP/Contents/Resources/es.lproj/"
-swiftc -O -o "$APP/Contents/MacOS/NTFSMount" main.swift Parsing.swift Localization.swift
+swiftc -O -o "$APP/Contents/MacOS/NTFSMount" main.swift Parsing.swift Localization.swift Backend.swift
 cat > "$APP/Contents/Info.plist" <<'P'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

@@ -9,6 +9,10 @@
 #
 # usage: install-root.sh <helper-source> <username>
 # test:  LIBEXEC=/some/dir ONLY_COPY=1 sh install-root.sh x x   (no root needed)
+#
+# env:   NTFSMOUNT_BACKEND=macfuse|fuse-t   which FUSE layer the copy is for (default macfuse)
+#        NTFSMOUNT_SRC_BIN=/dir             take ntfs-3g/ntfsfix from there (the prebuilt FUSE-T build) instead of Homebrew
+#        With neither, and a FUSE-T copy already installed, only the helper and the sudoers rule are refreshed.
 set -eu
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
 
@@ -22,13 +26,21 @@ die() { echo "$*" >&2; exit 1; }
 # install_name_tool warns that it invalidates the signature (we re-sign below); keep the rest
 int() { install_name_tool "$@" 2>&1 | grep -v 'invalidate the code signature' >&2 || true; }
 
+BACKEND="${NTFSMOUNT_BACKEND:-macfuse}"
+case "$BACKEND" in macfuse|fuse-t) ;; *) die "unknown backend: $BACKEND" ;; esac
+KEEP_COPY=0
 NTFS=""
-for p in /opt/homebrew/bin/ntfs-3g /usr/local/bin/ntfs-3g; do
-    if [ -x "$p" ]; then NTFS="$p"; break; fi
-done
-[ -n "$NTFS" ] || die "ntfs-3g is not installed"
-REAL=$(readlink -f "$NTFS")
-SRCBIN=$(dirname "$REAL")
+if [ -n "${NTFSMOUNT_SRC_BIN:-}" ]; then
+    [ -x "$NTFSMOUNT_SRC_BIN/ntfs-3g" ] && NTFS="$NTFSMOUNT_SRC_BIN/ntfs-3g"
+else
+    for p in /opt/homebrew/bin/ntfs-3g /usr/local/bin/ntfs-3g; do
+        if [ -x "$p" ]; then NTFS="$p"; break; fi
+    done
+    # no Homebrew: refreshing the helper must not need it when a FUSE-T copy is already in place
+    if [ -z "$NTFS" ] && [ -x "$DEST/bin/ntfs-3g" ] && [ "$(cat "$DEST/BACKEND" 2>/dev/null)" = fuse-t ]; then KEEP_COPY=1; fi
+fi
+[ -n "$NTFS" ] || [ $KEEP_COPY -eq 1 ] || die "ntfs-3g is not installed"
+if [ -n "$NTFS" ]; then REAL=$(readlink -f "$NTFS"); SRCBIN=$(dirname "$REAL"); fi
 
 # Root-owned files are only as safe as the folder that holds them: whoever can write the folder
 # can delete and replace them. Refuse a user-writable /usr/local/libexec when running as root.
@@ -37,6 +49,7 @@ if [ $IS_ROOT -eq 1 ]; then
     chown root:wheel "$LIBEXEC" && chmod 755 "$LIBEXEC" || die "could not secure $LIBEXEC"
 fi
 
+if [ $KEEP_COPY -eq 0 ]; then
 rm -rf "$NEW"
 mkdir -p "$NEW/bin" "$NEW/lib"
 cp "$SRCBIN/ntfs-3g" "$SRCBIN/ntfsfix" "$NEW/bin/"
@@ -108,6 +121,7 @@ for f in "$NEW"/bin/* "$NEW"/lib/*; do
     [ -z "$bad" ] || die "$f still depends on: $bad"
 done
 printf '%s\n' "$REAL" > "$NEW/SOURCE"
+printf '%s\n' "$BACKEND" > "$NEW/BACKEND"
 
 chmod -R go-w "$NEW"
 [ $IS_ROOT -eq 1 ] && chown -R root:wheel "$NEW"
@@ -115,6 +129,7 @@ rm -rf "$DEST.old"
 [ -d "$DEST" ] && mv "$DEST" "$DEST.old"
 mv "$NEW" "$DEST"
 rm -rf "$DEST.old"
+fi   # KEEP_COPY
 
 [ -n "${ONLY_COPY:-}" ] && exit 0
 

@@ -129,7 +129,7 @@ var helperReady: Bool {
 /// The private copy still works after `brew upgrade`, it is just older: compare the ntfs-3g it was
 /// made from (recorded by install-root.sh) with the one Homebrew has now.
 func copyStatus() -> (stale: Bool, from: String?, to: String?) {
-    guard let installed = ntfs3gPath,
+    guard backend == .macFUSE, let installed = ntfs3gPath,
           let stamp = try? String(contentsOfFile: secureSourceStamp, encoding: .utf8) else { return (false, nil, nil) }
     let old = stamp.trimmingCharacters(in: .whitespacesAndNewlines)
     let new = URL(fileURLWithPath: installed).resolvingSymlinksInPath().path
@@ -168,7 +168,6 @@ func installHelper() -> (ok: Bool, out: String) {
 
 let ntfs3gCandidates = ["/opt/homebrew/bin/ntfs-3g", "/usr/local/bin/ntfs-3g", "/opt/homebrew/sbin/ntfs-3g", "/usr/local/sbin/ntfs-3g"]
 var ntfs3gPath: String? { ntfs3gCandidates.first { FileManager.default.isExecutableFile(atPath: $0) } }
-var macFUSEInstalled: Bool { FileManager.default.fileExists(atPath: "/Library/Filesystems/macfuse.fs") }
 
 // MARK: - Preferences
 
@@ -259,8 +258,8 @@ func scanOthers() -> [Other] {
     return out
 }
 
-func fuseMounts() -> [String: String] {   // device id -> mount point
-    parseFuseMounts(run("/sbin/mount", []).out)
+func fuseMounts() -> [String: String] {   // device id -> mount point, whichever FUSE layer serves it
+    parseNtfs3gMounts(ps: run("/bin/ps", ["-axww", "-o", "command="]).out, mount: run("/sbin/mount", []).out)
 }
 
 func scanVolumes() -> [Vol] {
@@ -733,9 +732,9 @@ struct KnownDisk: Identifiable {
 
 /// Setup state for the Settings and Welcome windows; the slow checks run off the main thread.
 final class SetupModel: ObservableObject {
-    @Published var macFUSE: String?          // installed version
+    @Published var fuse: String?             // installed version of the FUSE layer (macFUSE or FUSE-T)
     @Published var kext = false
-    @Published var ntfs3g: String?           // Homebrew version ("instalado" if unknown)
+    @Published var ntfs3g: String?           // version of the ntfs-3g in use
     @Published var privateCopy: String?
     @Published var stale = false
     @Published var helper = false
@@ -750,7 +749,7 @@ final class SetupModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { if self.copied == key { self.copied = nil } }
     }
 
-    var installed: Bool { macFUSE != nil && ntfs3g != nil }
+    var installed: Bool { fuse != nil && ntfs3g != nil }
     var complete: Bool { installed && fuseIssue == nil && helper }
 
     func reload() {
@@ -759,15 +758,16 @@ final class SetupModel: ObservableObject {
         loading = true
         let issue = delegate.fuseIssue
         DispatchQueue.global().async {
-            let fuse = macFUSEVersion
-            let k = fuse != nil && kextLoaded()
-            let n = ntfs3gPath.map { cellarVersion(URL(fileURLWithPath: $0).resolvingSymlinksInPath().path) ?? L("installed") }
+            let fuse = fuseVersion
+            let k = fuse != nil && fuseReady()
+            let priv = FileManager.default.isExecutableFile(atPath: secureNtfs3g) ? ntfs3gVersion(at: secureNtfs3g) : nil
+            let n = priv ?? ntfs3gPath.map { cellarVersion(URL(fileURLWithPath: $0).resolvingSymlinksInPath().path) ?? L("installed") }
             let stamp = (try? String(contentsOfFile: secureSourceStamp, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let copy = stamp.flatMap { cellarVersion($0) }
+            let copy = stamp.flatMap { cellarVersion($0) } ?? priv
             let st = copyStatus().stale
             let h = helperReady
             DispatchQueue.main.async {
-                (self.macFUSE, self.kext, self.ntfs3g, self.privateCopy, self.stale, self.helper) = (fuse, k, n, copy, st, h)
+                (self.fuse, self.kext, self.ntfs3g, self.privateCopy, self.stale, self.helper) = (fuse, k, n, copy, st, h)
                 self.fuseIssue = issue
                 self.login = SMAppService.mainApp.status == .enabled
                 self.loading = false
@@ -897,8 +897,8 @@ struct AdvancedTab: View {
     var body: some View {
         Form {
             Section(L("Status")) {
-                StatusRow(ok: model.macFUSE != nil && model.fuseIssue == nil, title: "macFUSE",
-                          detail: model.macFUSE.map { L("{0} · extension {1}", $0, model.kext ? L("loaded") : L("not loaded")) } ?? L("Not installed"))
+                StatusRow(ok: model.fuse != nil && model.fuseIssue == nil, title: backend.name,
+                          detail: model.fuse.map { backend == .macFUSE ? L("{0} · extension {1}", $0, model.kext ? L("loaded") : L("not loaded")) : L("{0} · no kernel extension needed", $0) } ?? L("Not installed"))
                 StatusRow(ok: model.ntfs3g != nil, title: "ntfs-3g", detail: model.ntfs3g ?? L("Not installed"))
                 StatusRow(ok: model.helper && !model.stale, title: L("Passwordless mounting"),
                           detail: model.helper ? (model.stale ? L("Active · copy {0} (outdated)", model.privateCopy ?? "?") : L("Active · copy {0}", model.privateCopy ?? "?")) : L("Disabled"))
@@ -908,7 +908,7 @@ struct AdvancedTab: View {
                 Button(model.helper ? (model.stale ? L("Update the ntfs-3g copy…") : L("Reinstall passwordless mounting…"))
                                     : L("Turn on passwordless mounting…")) { delegate.installHelperAction() }
                     .disabled(!model.installed)
-                Button(L("Check for macFUSE updates…")) { delegate.checkMacFUSEUpdate() }
+                Button(L("Check for {0} updates…", backend.name)) { delegate.checkMacFUSEUpdate() }
                 HStack {
                     Button(model.copied == "diag" ? L("Diagnostics copied ✓") : L("Copy diagnostics")) {
                         delegate.copyDiagnostics()
@@ -950,17 +950,17 @@ struct WelcomeView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            StepRow(n: 1, done: model.macFUSE != nil && model.fuseIssue == nil, title: L("Install macFUSE"),
-                    detail: model.macFUSE == nil ? L("Lets macOS use file systems such as NTFS.")
+            StepRow(n: 1, done: model.fuse != nil && model.fuseIssue == nil, title: L("Install {0}", backend.name),
+                    detail: model.fuse == nil ? L("Lets macOS use file systems such as NTFS.")
                           : model.fuseIssue != nil ? L("Installed, but macOS hasn’t loaded the extension. Approve it in Privacy & Security and restart.")
-                          : L("Version {0}", model.macFUSE ?? ""),
-                    command: model.macFUSE == nil ? "brew install --cask macfuse" : nil,
-                    action: model.macFUSE != nil && model.fuseIssue != nil ? (L("Open Privacy & Security"), {
+                          : L("Version {0}", model.fuse ?? ""),
+                    command: model.fuse == nil ? (backend == .macFUSE ? "brew install --cask macfuse" : installCommand) : nil,
+                    action: model.fuse != nil && model.fuseIssue != nil ? (L("Open Privacy & Security"), {
                         if let u = URL(string: "x-apple.systempreferences:com.apple.preference.security") { NSWorkspace.shared.open(u) }
                     }) : nil, model: model)
             StepRow(n: 2, done: model.ntfs3g != nil, title: L("Install ntfs-3g"),
                     detail: model.ntfs3g == nil ? L("The driver that reads and writes NTFS.") : L("Version {0}", model.ntfs3g ?? ""),
-                    command: model.ntfs3g == nil ? "brew tap gromgit/homebrew-fuse && brew install ntfs-3g-mac" : nil, model: model)
+                    command: model.ntfs3g == nil ? (backend == .macFUSE ? "brew tap gromgit/homebrew-fuse && brew install ntfs-3g-mac" : installCommand) : nil, model: model)
             StepRow(n: 3, done: model.helper, title: L("Turn on passwordless mounting"),
                     detail: L("Just once: after that, disks mount on their own without asking for your password."),
                     action: model.helper ? nil : (L("Turn on…"), { delegate.installHelperAction() }),
@@ -971,7 +971,7 @@ struct WelcomeView: View {
                 set: { delegate.setLogin($0); model.login = SMAppService.mainApp.status == .enabled }))
             HStack {
                 if !model.installed {
-                    Link(L("The commands need Homebrew (brew.sh)"), destination: URL(string: "https://brew.sh")!).font(.caption)
+                    if backend == .macFUSE { Link(L("The commands need Homebrew (brew.sh)"), destination: URL(string: "https://brew.sh")!).font(.caption) }
                 }
                 Spacer()
                 Button(model.complete ? L("Get started") : L("Finish later")) { done() }
@@ -1106,7 +1106,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifica
             self?.scheduleRefresh()
             self?.checkFUSE()
         }
-        logLine("app started (v\(appVersion), macFUSE \(macFUSEVersion ?? "not installed"))")
+        logLine("app started (v\(appVersion), \(backend.name) \(fuseVersion ?? "not installed"))")
         refresh()
         checkFUSE()
     }
@@ -1220,7 +1220,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifica
         if settingsWindow?.isVisible == true || welcomeWindow?.isVisible == true { setup.reload() }
         if firstApply {
             firstApply = false
-            if !UserDefaults.standard.bool(forKey: "welcomeShown") && (ntfs3gPath == nil || !macFUSEInstalled || !ok) { showWelcome() }
+            if !UserDefaults.standard.bool(forKey: "welcomeShown") && (!ntfs3gAvailable || !fuseInstalled || !ok) { showWelcome() }
         }
     }
 
@@ -1275,7 +1275,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifica
     /// Mounts, one at a time, any NTFS volume macOS left read-only or unmounted.
     /// Only runs when the helper is installed, so it never pops a password prompt.
     func autoMountPending() {
-        guard Pref.get("autoMount"), helperOK, !busy, ntfs3gPath != nil, macFUSEInstalled else { return }
+        guard Pref.get("autoMount"), helperOK, !busy, ntfs3gAvailable, fuseInstalled else { return }
         let ro = Pref.readOnlyUUIDs
         guard let v = vols.first(where: {
             !$0.rw && !attempted.contains($0.dev) && !userUnmounted.contains($0.dev) && !ro.contains($0.uuid ?? "")
@@ -1290,12 +1290,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifica
     /// they show up as a cryptic mount error. Loading it needs the helper, so without it we stay quiet:
     /// an unloaded extension is normal until the first mount.
     func checkFUSE() {
-        guard macFUSEInstalled else { return }
+        guard fuseInstalled else { return }
         DispatchQueue.global().async {
             var issue: String?
-            if !kextLoaded(), helperReady {
+            // FUSE-T has no kernel extension to break: it is ready once installed
+            if backend == .macFUSE, !kextLoaded(), helperReady {
                 let r = privileged(["loadfuse"])
-                if !r.ok { issue = r.out.isEmpty ? L("Couldn’t load the macFUSE extension.") : r.out }
+                if !r.ok { issue = r.out.isEmpty ? L("Couldn’t load the {0} extension.", backend.name) : r.out }
             }
             DispatchQueue.main.async {
                 guard self.fuseIssue != issue else { return }
@@ -1307,7 +1308,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifica
 
     @objc func showFUSEIssue() {
         guard let issue = fuseIssue else { return }
-        ask(L("macFUSE is not active"),
+        ask(L("{0} is not active", backend.name),
             L("{0}\n\nIf macOS was updated recently, it may have disapproved the extension: approve it in System Settings > Privacy & Security (it may ask you to restart). If macFUSE is out of date, reinstall it from macfuse.github.io.", issue),
             [L("Open Settings"), L("Close")]) { i in
             if i == 0, let u = URL(string: "x-apple.systempreferences:com.apple.preference.security") { NSWorkspace.shared.open(u) }
@@ -1353,7 +1354,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifica
         let name: String, label: String
         var color: NSColor?
         if busy { (name, label) = ("arrow.triangle.2.circlepath", L("working")) }
-        else if fuseIssue != nil || ntfs3gPath == nil || !macFUSEInstalled || vols.contains(where: { !$0.rw && !ro.contains($0.uuid ?? "") }) {
+        else if fuseIssue != nil || !ntfs3gAvailable || !fuseInstalled || vols.contains(where: { !$0.rw && !ro.contains($0.uuid ?? "") }) {
             (name, label, color) = ("externaldrive.badge.exclamationmark", L("needs attention"), .systemOrange)
         }
         else if vols.contains(where: { $0.rw }) { (name, label) = ("externaldrive.fill", L("disks mounted with write access")) }
@@ -1476,16 +1477,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifica
         menu.removeAllItems()
         live.removeAll()
         var attention = false
-        if ntfs3gPath == nil || !macFUSEInstalled {
-            menu.addItem(action(L("Missing: {0} — finish setup…", macFUSEInstalled ? "ntfs-3g" : "macFUSE / ntfs-3g"),
+        if !ntfs3gAvailable || !fuseInstalled {
+            menu.addItem(action(L("Missing: {0} — finish setup…", fuseInstalled ? "ntfs-3g" : "\(backend.name) / ntfs-3g"),
                                 "exclamationmark.triangle.fill", #selector(showWelcome), .systemOrange))
             attention = true
         }
         if fuseIssue != nil {
-            menu.addItem(action(L("macFUSE is not active — see details…"), "exclamationmark.octagon.fill", #selector(showFUSEIssue), .systemRed))
+            menu.addItem(action(L("{0} is not active — see details…", backend.name), "exclamationmark.octagon.fill", #selector(showFUSEIssue), .systemRed))
             attention = true
         }
-        if ntfs3gPath != nil && macFUSEInstalled {
+        if ntfs3gAvailable && fuseInstalled {
             if !helperOK {
                 menu.addItem(action(L("Turn on passwordless mounting…"), "key.fill", #selector(installHelperAction), .systemYellow))
                 attention = true
@@ -1516,7 +1517,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifica
             menu.addItem(.separator())
         }
         let mountable = vols.filter { !$0.rw && !Pref.readOnlyUUIDs.contains($0.uuid ?? "") }
-        if mountable.count >= 2 && ntfs3gPath != nil && macFUSEInstalled {
+        if mountable.count >= 2 && ntfs3gAvailable && fuseInstalled {
             menu.addItem(action(L("Mount all with write access"), "square.and.pencil", #selector(mountAll)))
         }
         if vols.filter({ $0.rw }).count >= 2 {
@@ -1699,7 +1700,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifica
     }
 
     func requestMount(_ v: Vol) {
-        guard ntfs3gPath != nil, macFUSEInstalled else { showWelcome(); return }
+        guard ntfs3gAvailable, fuseInstalled else { showWelcome(); return }
         mountVolume(v, force: false, auto: false)
     }
 
@@ -1761,10 +1762,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifica
                 [L("Repair with ntfsfix and retry"), L("Keep read-only")]) { i in
                 if i == 0 { self.fixAndMount(v) }
             }
-        } else if low.contains("macfuse") || low.contains("fuse:") || low.contains("kext") || low.contains("kernel extension")
+        } else if low.contains("macfuse") || low.contains("fuse-t") || low.contains("fuse:") || low.contains("kext") || low.contains("kernel extension")
                     || low.contains("/dev/macfuse") || low.contains("filesystem is not available") {
             checkFUSE()
-            alert(L("macFUSE didn’t respond"),
+            alert(L("{0} didn’t respond", backend.name),
                   L("{0}\n\nThe extension may not be approved or loaded. See Settings > Advanced for details.", detail))
         } else {
             alert(L("Couldn’t mount with write access"), detail)
@@ -1985,7 +1986,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifica
         let stamp = (try? String(contentsOfFile: secureSourceStamp, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
         let copy = copyStatus()
         lines.append("NTFS Mount \(appVersion) · \(ProcessInfo.processInfo.operatingSystemVersionString)")
-        lines.append("macFUSE: \(macFUSEVersion ?? "not installed") · extension " + (kextLoaded() ? "loaded" : "not loaded")
+        lines.append("FUSE layer: \(backend.name) \(fuseVersion ?? "not installed") · " + (fuseReady() ? "ready" : "NOT ready")
                  + (fuseIssue.map { " · PROBLEM: \($0)" } ?? ""))
         lines.append("ntfs-3g (Homebrew): \(ntfs3gPath.flatMap { cellarVersion(URL(fileURLWithPath: $0).resolvingSymlinksInPath().path) } ?? "not installed")"
                  + " · private copy: " + (stamp.flatMap { cellarVersion($0) } ?? "not installed") + (copy.stale ? " (OUTDATED)" : ""))
@@ -1998,7 +1999,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifica
             let state = v.rw ? "read-write" : (v.mountPoint != nil ? "read-only" : "unmounted")
             lines.append("• \(v.name) [\(v.dev)] \(fmtBytes(v.size)) \(v.bus ?? "") — \(state)" + (v.mountPoint.map { " — \($0)" } ?? ""))
         }
-        let mounts = run("/sbin/mount", []).out.split(separator: "\n").filter { $0.contains("macfuse") || $0.contains(" ntfs") }
+        let mounts = run("/sbin/mount", []).out.split(separator: "\n").filter { $0.contains("macfuse") || $0.contains("fuse-t:") || $0.contains(" ntfs") }
         if !mounts.isEmpty { lines.append(""); lines.append("mount:"); lines.append(contentsOf: mounts.map { "  \($0)" }) }
         if withLog { lines.append(""); lines.append("Log (last lines):"); lines.append(logTail(60)) }
         return lines.joined(separator: "\n")
@@ -2012,8 +2013,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifica
 
     /// Only on demand: the app never talks to the network by itself.
     @objc func checkMacFUSEUpdate() {
-        guard let installed = macFUSEVersion else { showWelcome(); return }
-        var req = URLRequest(url: URL(string: "https://api.github.com/repos/macfuse/macfuse/releases/latest")!)
+        guard let installed = fuseVersion else { showWelcome(); return }
+        let repo = backend == .macFUSE ? "macfuse/macfuse" : "macos-fuse-t/fuse-t"
+        var req = URLRequest(url: URL(string: "https://api.github.com/repos/\(repo)/releases/latest")!)
         req.setValue("NTFSMount", forHTTPHeaderField: "User-Agent")
         req.timeoutInterval = 15
         URLSession.shared.dataTask(with: req) { data, _, err in
@@ -2024,16 +2026,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifica
                 return
             }
             let latest = tag.replacingOccurrences(of: "macfuse-", with: "").replacingOccurrences(of: "v", with: "")
-            let page = json["html_url"] as? String ?? "https://macfuse.github.io"
-            logLine("macFUSE installed \(installed), latest \(latest)")
+            let page = json["html_url"] as? String ?? "https://github.com/\(repo)/releases"
+            logLine("\(backend.name) installed \(installed), latest \(latest)")
             if isNewer(latest, than: installed) {
-                self.ask(L("A new version of macFUSE is available"),
+                self.ask(L("A new version of {0} is available", backend.name),
                          L("Installed: {0} · Available: {1}\n\nAfter updating you will have to approve the extension again and restart.", installed, latest),
                          [L("Open download"), L("Not now")]) { i in
                     if i == 0, let u = URL(string: page) { NSWorkspace.shared.open(u) }
                 }
             } else {
-                self.alert(L("macFUSE is up to date"), L("Installed version: {0}", installed))
+                self.alert(L("{0} is up to date", backend.name), L("Installed version: {0}", installed))
             }
         }.resume()
     }
