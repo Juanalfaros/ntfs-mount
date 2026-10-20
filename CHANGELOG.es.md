@@ -31,9 +31,10 @@ compilar y escribir comandos. Una línea en Terminal lo hace todo.
 
 ### Límites conocidos
 
-- Con FUSE-T no se conservan los atributos extendidos al copiar al disco, y un SSD muy rápido puede ir más lento
-  que con macFUSE. FUSE-T es gratis solo para uso no comercial.
-- Probada en un solo Mac (Apple Silicon, macOS 27); Intel y el modo macFUSE de la 2.0 tienen pocas pruebas.
+- No se conservan los atributos extendidos al copiar a un disco NTFS (igual con las dos capas), y un SSD muy rápido
+  puede ir más lento con FUSE-T que con macFUSE. FUSE-T es gratis solo para uso no comercial.
+- Probada en un solo Mac (Apple Silicon, macOS 27), incluida una instalación desde cero, la desinstalación y el modo
+  macFUSE; las partes de Intel solo se ejecutaron con Rosetta.
 
 ## 1.0.0 (2026-10-19): Primera versión pública
 

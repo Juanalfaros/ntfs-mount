@@ -29,9 +29,10 @@ and typing commands. One line in Terminal does it all.
 
 ### Known limits
 
-- With FUSE-T, extended attributes are not preserved when copying onto the disk, and a very fast SSD may be slower
-  than with macFUSE. FUSE-T is free for non-commercial use only.
-- Tested on one Mac (Apple Silicon, macOS 27); Intel and the macFUSE mode of 2.0 are lightly tested.
+- Extended attributes are not preserved when copying onto an NTFS disk (same with both layers), and a very fast SSD may
+  be slower with FUSE-T than with macFUSE. FUSE-T is free for non-commercial use only.
+- Tested on one Mac (Apple Silicon, macOS 27), including a fresh install, uninstall and the macFUSE mode; the Intel
+  parts ran under Rosetta only.
 
 ## 1.0.0 (2026-10-19): First public release
 

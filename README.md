@@ -89,7 +89,6 @@ from a clone of this repository. Its messages follow your Mac's language (`NTFSM
 |---|---|---|
 | Install | One command, no restart | Kernel extension: on Apple Silicon you must lower startup security in Recovery and approve it |
 | Speed | Same as macFUSE on a USB disk in our test (see below); slower on a very fast SSD | The fastest |
-| Extended attributes | Not preserved when copying | Emulated |
 | License | Free for **non-commercial** use; a company needs a license from FUSE-T's authors | Free to use |
 
 On a 1 TB USB disk we measured writing 1 GB at 22.6 MB/s with FUSE-T and 23.7 MB/s with macFUSE, reading at 73.9
@@ -237,7 +236,7 @@ in `Localizable.strings` (and `InfoPlist.strings`), add the language to `CFBundl
 - It does not replace `chkdsk`: if a disk is damaged, repair it on Windows.
 - It relies on macFUSE's kernel extension, which Apple may disapprove in any update.
 - BitLocker-encrypted volumes are not supported.
-- With FUSE-T, extended attributes (some Finder tags and quarantine flags) are not preserved when copying files onto the disk.
+- Extended attributes (some Finder tags and quarantine flags) are not preserved when copying files onto an NTFS disk, with either layer.
 - Full Disk Access is required and cannot be granted by the installer.
 
 ## License

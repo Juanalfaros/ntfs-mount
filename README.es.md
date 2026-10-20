@@ -91,7 +91,6 @@ compila desde una copia de este repositorio. Sus mensajes siguen el idioma de tu
 |---|---|---|
 | Instalación | Un comando, sin reiniciar | Extensión de kernel: en Apple Silicon hay que bajar la seguridad de arranque en Recuperación y aprobarla |
 | Velocidad | Igual que macFUSE en un disco USB en nuestra prueba (abajo); más lento en un SSD muy rápido | La más rápida |
-| Atributos extendidos | No se conservan al copiar | Emulados |
 | Licencia | Gratis para uso **no comercial**; una empresa necesita licencia de los autores de FUSE-T | Libre de usar |
 
 En un disco USB de 1 TB medimos escribir 1 GB a 22,6 MB/s con FUSE-T y 23,7 MB/s con macFUSE, y leer a 73,9 y
@@ -240,7 +239,7 @@ la línea `cp` que copia la carpeta `.lproj`, y ejecuta `sh test.sh`.
 - No sustituye a `chkdsk`: si un disco está dañado, repáralo en Windows.
 - Se apoya en la extensión de kernel de macFUSE, que Apple puede desaprobar en cualquier actualización.
 - Los volúmenes cifrados con BitLocker no están soportados.
-- Con FUSE-T no se conservan los atributos extendidos (algunas etiquetas del Finder y marcas de cuarentena) al copiar archivos al disco.
+- No se conservan los atributos extendidos (algunas etiquetas del Finder y marcas de cuarentena) al copiar archivos a un disco NTFS, con ninguna de las dos capas.
 - El Acceso total al disco es obligatorio y el instalador no puede concederlo.
 
 ## Licencia
