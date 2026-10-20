@@ -107,6 +107,7 @@
 "Passwordless mounting is on and the secure ntfs-3g copy is up to date. Disks that are already mounted keep working; the new version will be used on the next mount." = "El montaje sin contraseña está activo y la copia segura de ntfs-3g está al día. Los discos que ya están montados siguen funcionando; la versión nueva se usará en el próximo montaje.";
 "Paste" = "Pegar";
 "Plug in a Windows disk and it will show up here." = "Conecta uno de Windows y aparecerá aquí.";
+"Plug in a Windows disk to check it. If macOS asks, allow it; otherwise add NTFS Mount to the list and turn it on." = "Conecta un disco de Windows para comprobarlo. Si macOS lo pide, permítelo; si no, agrega NTFS Mount a la lista y actívalo.";
 "Prevents creating names Windows doesn’t accept (with : * ? \" < > | or ending in a dot or space). Applies on the next mount." = "Impide crear nombres que Windows no acepta (con : * ? \" < > | o acabados en punto o espacio). Se aplica en el próximo montaje.";
 "Quit" = "Salir";
 "Quit NTFS Mount" = "Salir de NTFS Mount";

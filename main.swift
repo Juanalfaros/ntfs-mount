@@ -153,9 +153,15 @@ private func privilegedRun(_ args: [String]) -> (ok: Bool, out: String) {
     return runAsAdmin("NTFSMOUNT_UNSAFE_BIN=1 " + (["/bin/sh", h] + args).map(shq).joined(separator: " ") + " 2>&1")
 }
 
-/// Whether the app can open raw disks (macOS "Full Disk Access"); the helper tries it as root under our process tree.
-func hasFullDiskAccess() -> Bool {
-    run("/usr/bin/sudo", ["-n", helperPath, "fdacheck"]).status == 0
+/// Whether the app can open raw disks (macOS "Full Disk Access"); the helper tries it as root under our process
+/// tree on an NTFS partition. nil when no NTFS disk is connected, because there is nothing to try it on.
+func hasFullDiskAccess(trying dev: String?) -> Bool? {
+    guard let dev else { return nil }
+    switch run("/usr/bin/sudo", ["-n", helperPath, "fdacheck", dev]).status {
+    case 0: return true
+    case 1: return false
+    default: return nil
+    }
 }
 
 func installHelper() -> (ok: Bool, out: String) {
@@ -756,13 +762,14 @@ final class SetupModel: ObservableObject {
     }
 
     var installed: Bool { fuse != nil && ntfs3g != nil }
-    var complete: Bool { installed && fuseIssue == nil && helper && fda == true }
+    var complete: Bool { installed && fuseIssue == nil && helper && fda != false }
 
     func reload() {
         reloadDisks()
         guard !loading else { return }
         loading = true
         let issue = delegate.fuseIssue
+        let probeDev = delegate.vols.first?.dev
         DispatchQueue.global().async {
             let fuse = fuseVersion
             let k = fuse != nil && fuseReady()
@@ -772,7 +779,7 @@ final class SetupModel: ObservableObject {
             let copy = stamp.flatMap { cellarVersion($0) } ?? priv
             let st = copyStatus().stale
             let h = helperReady
-            let f = h ? hasFullDiskAccess() : nil
+            let f = h ? hasFullDiskAccess(trying: probeDev) : nil
             DispatchQueue.main.async {
                 (self.fuse, self.kext, self.ntfs3g, self.privateCopy, self.stale, self.helper) = (fuse, k, n, copy, st, h)
                 self.fda = f
@@ -974,7 +981,8 @@ struct WelcomeView: View {
                     action: model.helper ? nil : (L("Turn on…"), { delegate.installHelperAction() }),
                     enabled: model.installed, model: model)
             StepRow(n: 4, done: model.fda == true, title: L("Allow Full Disk Access"),
-                    detail: L("macOS asks for your OK once so NTFS Mount can open the disks: add NTFS Mount to the list and turn it on."),
+                    detail: model.fda == nil && model.helper ? L("Plug in a Windows disk to check it. If macOS asks, allow it; otherwise add NTFS Mount to the list and turn it on.")
+                          : L("macOS asks for your OK once so NTFS Mount can open the disks: add NTFS Mount to the list and turn it on."),
                     action: model.fda == true ? nil : (L("Open Full Disk Access"), {
                         if let u = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") { NSWorkspace.shared.open(u) }
                     }),

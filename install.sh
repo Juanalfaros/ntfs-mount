@@ -52,6 +52,8 @@ todo() { printf '  • %s\n' "$*"; }
 die()  { printf '\n✗ %s\n' "$*" >&2; exit 1; }
 # the script usually arrives through a pipe, so questions are read from the terminal
 ask()  { [ $YES -eq 1 ] && return 0; [ -r /dev/tty ] || return 1; printf '%s [y/N] ' "$1" >/dev/tty; read -r r </dev/tty; case "$r" in y|Y|yes|YES|s|S|si|SI|sí) return 0 ;; *) return 1 ;; esac; }
+# NTFSMOUNT_SUDO="sudo -A" (with SUDO_ASKPASS) asks for the password in a dialog when there is no terminal
+SUDO="${NTFSMOUNT_SUDO:-sudo}"
 sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
 
 LIBEXEC=/usr/local/libexec
@@ -98,9 +100,9 @@ if [ $UNINSTALL -eq 1 ]; then
     osascript -e 'tell application "NTFS Mount" to quit' >/dev/null 2>&1; sleep 1
     if [ -f "$APP/Contents/Resources/uninstall-root.sh" ]; then
         R=$(mktemp -d); cp "$APP/Contents/Resources/uninstall-root.sh" "$R/"
-        sudo sh "$R/uninstall-root.sh"; rm -rf "$R"
+        $SUDO sh "$R/uninstall-root.sh"; rm -rf "$R"
     else
-        sudo rm -f /etc/sudoers.d/ntfsmount "$LIBEXEC/ntfsmount-helper"; sudo rm -rf "$LIBEXEC/ntfsmount"
+        $SUDO rm -f /etc/sudoers.d/ntfsmount "$LIBEXEC/ntfsmount-helper"; $SUDO rm -rf "$LIBEXEC/ntfsmount"
     fi
     rm -rf "$APP"
     say "$(T 'Removed. FUSE-T stays installed (to remove it: "/Library/Application Support/fuse-t/uninstall.sh").' 'Listo. FUSE-T sigue instalado (para quitarlo: "/Library/Application Support/fuse-t/uninstall.sh").')"
@@ -138,7 +140,7 @@ if [ "$BACKEND" = fuse-t ] && [ $FUSET_OK -eq 0 ]; then
     [ -n "${NTFSMOUNT_FUSET_PKG:-}" ] || curl -fsSL --retry 3 -o "$PKG" "$FUSET_URL" || die "$(T 'could not download FUSE-T' 'no se pudo descargar FUSE-T')"
     [ "$(sha256 "$PKG")" = "$FUSET_SHA256" ] || die "$(T 'FUSE-T checksum mismatch' 'la suma de verificación de FUSE-T no coincide')"
     pkgutil --check-signature "$PKG" 2>/dev/null | grep -q "$FUSET_TEAM" || die "$(T 'FUSE-T installer is not signed by its authors' 'el instalador de FUSE-T no está firmado por sus autores')"
-    sudo installer -pkg "$PKG" -target / >/dev/null || die "$(T 'FUSE-T could not be installed' 'no se pudo instalar FUSE-T')"
+    $SUDO installer -pkg "$PKG" -target / >/dev/null || die "$(T 'FUSE-T could not be installed' 'no se pudo instalar FUSE-T')"
 elif [ "$BACKEND" = macfuse ]; then
     command -v brew >/dev/null 2>&1 || die "$(T 'Install Homebrew from https://brew.sh and run this again.' 'Instala Homebrew desde https://brew.sh y vuelve a ejecutar esto.')"
     if [ $MACFUSE_OK -eq 0 ]; then
@@ -163,7 +165,7 @@ say "$(T 'Installing the helper (it asks for your password once)…' 'Instalando
 H_HELPER=$(sha256 "$RES/ntfsmount-helper"); H_INST=$(sha256 "$RES/install-root.sh")
 H_N3G=""; H_FIX=""
 [ -n "$SRC_BIN" ] && { H_N3G=$(sha256 "$SRC_BIN/ntfs-3g"); H_FIX=$(sha256 "$SRC_BIN/ntfsfix"); }
-sudo env NTFSMOUNT_BACKEND="$BACKEND" sh -c '
+$SUDO env NTFSMOUNT_BACKEND="$BACKEND" sh -c '
     set -eu
     R=$(mktemp -d); chmod 700 "$R"; trap "rm -rf \"$R\"" EXIT
     cp "$1" "$R/ntfsmount-helper"; cp "$2" "$R/install-root.sh"
