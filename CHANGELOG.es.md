@@ -2,7 +2,7 @@
 
 [English](CHANGELOG.md) · **Español**
 
-## 2.0.0 (sin publicar): Instalación fácil
+## 2.0.0 (2026-10-20): Instalación fácil
 
 El gran cambio: instalar ya no significa instalar Homebrew, aprobar una extensión de kernel en Recuperación,
 compilar y escribir comandos. Una línea en Terminal lo hace todo.

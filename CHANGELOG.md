@@ -2,7 +2,7 @@
 
 **English** · [Español](CHANGELOG.es.md)
 
-## 2.0.0 (unreleased): Easy install
+## 2.0.0 (2026-10-20): Easy install
 
 The big change: installing no longer means installing Homebrew, approving a kernel extension in Recovery, compiling
 and typing commands. One line in Terminal does it all.
