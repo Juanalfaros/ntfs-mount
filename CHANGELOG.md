@@ -2,6 +2,37 @@
 
 **English** · [Español](CHANGELOG.es.md)
 
+## 2.0.0 (unreleased): Easy install
+
+The big change: installing no longer means installing Homebrew, approving a kernel extension in Recovery, compiling
+and typing commands. One line in Terminal does it all.
+
+### Added
+
+- **One-line installer** (`install.sh`): installs FUSE-T from its authors' notarized installer (checksum and
+  signature verified), downloads the prebuilt universal app and ntfs-3g from the GitHub release (checksums
+  verified), installs the privileged helper from a root-owned, re-verified copy, and opens the app. No Homebrew, no
+  Xcode tools, no restart. `--check`, `--uninstall`, `--yes` and `--backend` options.
+- **FUSE-T as the default mount layer**, so no kernel extension is needed. macFUSE remains available
+  (`--backend macfuse`). Measured on a real USB disk: same speed as macFUSE, identical data, clean unmounts.
+- **Prebuilt ntfs-3g for FUSE-T** (universal, arm64 + x86_64), built in GitHub Actions from the unmodified
+  upstream source, which is kept in the repository and attached to each release.
+- **Full Disk Access guide**: a fourth step in the Welcome window that checks the permission and opens the right
+  System Settings pane.
+- `ntfsmount://welcome` link; `NTFSMOUNT_SUDO` to ask for the password in a dialog.
+
+### Improved
+
+- Mounted volumes are found from the ntfs-3g process instead of the `mount` line, so it works with either layer.
+- The helper no longer assumes ntfs-3g puts itself in the background, and waits up to 15 s for the mount.
+- The app, Settings and Welcome name the layer in use (FUSE-T or macFUSE).
+
+### Known limits
+
+- With FUSE-T, extended attributes are not preserved when copying onto the disk, and a very fast SSD may be slower
+  than with macFUSE. FUSE-T is free for non-commercial use only.
+- Tested on one Mac (Apple Silicon, macOS 27); Intel and the macFUSE mode of 2.0 are lightly tested.
+
 ## 1.0.0 (2026-10-19): First public release
 
 NTFS Mount becomes public: a menu bar app that mounts NTFS disks with write access on macOS, built on

@@ -20,6 +20,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-NTFS Mount reads and writes NTFS disks through third-party software that you install
-separately (see THIRD-PARTY-NOTICES.md). Writing to a disk can cause data loss: back up
+NTFS Mount reads and writes NTFS disks through third-party software (ntfs-3g, and FUSE-T or macFUSE; see
+THIRD-PARTY-NOTICES.md), which have their own licenses. Writing to a disk can cause data loss: back up
 anything you care about before using it.

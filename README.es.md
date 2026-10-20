@@ -14,16 +14,14 @@ La interfaz habla **español e inglés** y sigue el idioma de tu Mac.
 > - Escribir en NTFS desde el espacio de usuario es cómodo, pero puede dañar un disco si se desconecta mal
 >   o si algo falla. **Respalda lo que te importe** y usa la app bajo tu propia responsabilidad (mira la
 >   [licencia](LICENSE)).
-> - Se desarrolló y probó en **un solo Mac**: Apple Silicon, macOS 27.0.1, macFUSE 5.4.0, ntfs-3g
->   2026.7.7. Otras versiones de macOS y los Mac con Intel no están probados. Si la pruebas,
->   [abre un issue](../../issues) y cuéntanos cómo te fue.
-> - Depende de la **extensión de kernel de macFUSE**, que en Apple Silicon obliga a bajar la seguridad de
->   arranque del Mac y aprobar la extensión (mira [Instalación](#instalación)). Apple podría bloquearla en
->   un macOS futuro.
-> - No hay una descarga lista para abrir: la app se compila en tu Mac con `install.sh` (nada va firmado ni
->   notarizado por Apple, porque eso exige una cuenta de desarrollador de pago).
+> - Se desarrolló y probó en **un solo Mac**: Apple Silicon, macOS 27.0.1, FUSE-T 1.2.9, ntfs-3g 2026.9.28
+>   (y, para el modo macFUSE, macFUSE 5.4.0). Los Mac con Intel y otras versiones de macOS no están probados.
+>   Si la pruebas, [abre un issue](../../issues) y cuéntanos cómo te fue.
+> - **No está firmada ni notarizada por Apple** (eso exige una cuenta de desarrollador de pago). El
+>   instalador de una línea evita los avisos que macOS muestra con las apps descargadas; mira
+>   [Instalación](#instalación).
 
-Requiere macOS 13 o posterior (usa `SMAppService`).
+Requiere macOS 13 o posterior.
 
 ## Qué hace
 
@@ -60,60 +58,65 @@ Requiere macOS 13 o posterior (usa `SMAppService`).
 
 ## Instalación
 
-**Atajo:** `sh install.sh` hace los pasos 1, 3 y 6 que falten (instala macFUSE y ntfs-3g con Homebrew, crea el
-certificado de firma si quieres, compila y abre la app) y te dice qué queda por hacer a mano (pasos 2, 4 y 5).
-Es idempotente. `sh install.sh --check` solo informa del estado de cada pieza, sin cambiar nada. Sus
-mensajes siguen el idioma de tu Mac (fuerza uno con `NTFSMOUNT_LANG=en` o `NTFSMOUNT_LANG=es`).
+Abre **Terminal** y pega esta única línea:
 
-Los pasos a mano:
+```sh
+curl -fsSL https://raw.githubusercontent.com/Juanalfaros/ntfs-mount/main/install.sh | sh
+```
 
-1. **macFUSE y ntfs-3g** (necesitas [Homebrew](https://brew.sh); en Homebrew 5 o posterior, además
-   `brew trust --formula gromgit/fuse/ntfs-3g-mac` antes del último `brew install`, porque es una fórmula de
-   terceros):
+Te pide la contraseña una vez y luego:
 
-   ```sh
-   brew install --cask macfuse
-   brew tap gromgit/homebrew-fuse
-   brew install ntfs-3g-mac
-   ```
+1. instala **FUSE-T** (con el instalador notarizado de sus propios autores, tras comprobar su suma de
+   verificación y su firma) si no lo tienes;
+2. descarga la app y ntfs-3g de la última versión de este proyecto y comprueba sus sumas de verificación;
+3. instala el helper privilegiado que permite montar discos sin pedir contraseña;
+4. deja **NTFS Mount** en `~/Applications` y la abre.
 
-2. **Aprobar la extensión de macFUSE** en Ajustes del Sistema → Privacidad y seguridad. En Apple Silicon
-   suele exigir reiniciar en Recuperación, elegir «Seguridad reducida», permitir extensiones de kernel y
-   reiniciar. Sin esto no hay escritura.
+No hay nada que compilar, ni Homebrew, ni reinicio. Los archivos descargados con `curl` no llevan la
+cuarentena de macOS, así que Gatekeeper no tiene nada que bloquear.
 
-3. **Compilar e instalar la app** (necesita las herramientas de línea de comandos de Xcode,
-   `xcode-select --install`):
+**El único paso que no puede hacer por ti** es el *Acceso total al disco*, que macOS solo deja conceder a la
+propia persona. La ventana de Bienvenida que se abre te guía: agrega **NTFS Mount** a la lista en *Ajustes del
+Sistema → Privacidad y seguridad → Acceso total al disco* y actívalo. (Ni root, ni un demonio, ni una ventana de
+contraseña lo evitan: macOS lo pide a cualquier programa que abra un disco directamente.) El instalador además
+ofrece crear un certificado local de firma para que macOS recuerde ese permiso entre actualizaciones.
 
-   ```sh
-   ./build.sh
-   open ~/Applications/"NTFS Mount.app"
-   ```
+Opciones (agrégalas después de `sh -s --`): `--check` informa del estado sin cambiar nada, `--yes` no hace
+preguntas, `--uninstall` lo quita todo, `--backend macfuse` usa macFUSE en vez de FUSE-T y `--from-source`
+compila desde una copia de este repositorio. Sus mensajes siguen el idioma de tu Mac (`NTFSMOUNT_LANG=en` o `es`).
 
-4. **Dar permisos la primera vez**, cuando macOS los pida:
-   - *Volúmenes extraíbles* → Permitir.
-   - *Acceso total al disco* → Ajustes del Sistema → Privacidad y seguridad → Acceso total al disco → `+`
-     → NTFS Mount. Sin esto `ntfs-3g` falla con `Operation not permitted`.
+### Dos formas de montar: FUSE-T (por defecto) o macFUSE
 
-5. **Activar el montaje sin contraseña:** menú → **Activar montaje sin contraseña…** (o desde la bienvenida).
-   Pide la contraseña de administrador una sola vez. Sin esto la app funciona, pero pide contraseña en cada
-   acción y no puede montar automáticamente.
+| | **FUSE-T** (por defecto) | macFUSE |
+|---|---|---|
+| Instalación | Un comando, sin reiniciar | Extensión de kernel: en Apple Silicon hay que bajar la seguridad de arranque en Recuperación y aprobarla |
+| Velocidad | Igual que macFUSE en un disco USB en nuestra prueba (abajo); más lento en un SSD muy rápido | La más rápida |
+| Atributos extendidos | No se conservan al copiar | Emulados |
+| Licencia | Gratis para uso **no comercial**; una empresa necesita licencia de los autores de FUSE-T | Libre de usar |
 
-6. *(Recomendado)* **Firma estable:** `sh setup-signing.sh` crea un certificado local en tu llavero y
-   `build.sh` lo usa. Así macOS no vuelve a pedir los permisos del paso 4 cada vez que recompilas. La primera
-   vez, macOS te pedirá la contraseña (marcar el certificado como de confianza) y puede preguntar si
-   `codesign` puede usar la llave («Permitir siempre»). El certificado nunca sale de tu Mac.
+En un disco USB de 1 TB medimos escribir 1 GB a 22,6 MB/s con FUSE-T y 23,7 MB/s con macFUSE, y leer a 73,9 y
+56,5 MB/s, con datos idénticos y desmontajes limpios en ambos. Su backend NFS es más lento en SSD muy rápidos
+(usuarios reportan ~20 frente a ~700 MB/s); el backend SMB de FUSE-T falló nuestras pruebas de creación de
+archivos y no se usa.
+
+El modo macFUSE es el de la versión 1 (el `ntfs-3g-mac` de Homebrew); sigue funcionando con
+`--backend macfuse`, pero ha tenido bastante menos pruebas en la 2.0. FUSE-T y macFUSE no están pensados para
+instalarse juntos: pisan un archivo de biblioteca compartido (`libfuse3`).
+
+### Compilarla tú
+
+`sh install-from-source.sh` compila la app en tu Mac (necesita Homebrew, macFUSE y las herramientas de línea de
+comandos de Xcode; es el flujo de la versión 1). `sh build.sh` solo recompila la app.
 
 ### Instalar tú mismo la parte privilegiada
 
-El paso 5 ejecuta `install-root.sh` como root desde dentro del paquete de la app, que es de tu usuario (mira
-el [modelo de seguridad](#modelo-de-seguridad)). Si prefieres no confiar en eso, lee el script y ejecútalo tú
-desde la carpeta del proyecto:
+El instalador ejecuta `install-root.sh` como root desde una copia de root cuya suma de verificación comprobó. Si
+prefieres leerlo y ejecutarlo tú:
 
 ```sh
-sudo sh install-root.sh ntfsmount-helper "$USER"
+sudo sh install-root.sh ntfsmount-helper "$USER"          # modo macFUSE (necesita el ntfs-3g de Homebrew)
+sudo NTFSMOUNT_BACKEND=fuse-t NTFSMOUNT_SRC_BIN=/ruta/a/ntfs-3g-fuse-t/bin sh install-root.sh ntfsmount-helper "$USER"
 ```
-
-Después abre la app: detecta que el montaje sin contraseña ya está activo.
 
 ## Cómo funciona
 
@@ -135,8 +138,10 @@ NTFS Mount.app (usuario)  ──sudo -n──▶  /usr/local/libexec/ntfsmount-h
 | `uninstall-root.sh` | Deshace lo anterior |
 | `setup-signing.sh` | Crea el certificado local de firma |
 | `build.sh` | Compila, arma el `.app` en `~/Applications` y lo firma |
-| `install.sh` | Instalador de todo: dependencias, firma, compilación y primer arranque |
-| `package.sh` | Genera `dist/NTFS-Mount-<versión>.dmg` para llevar la app a otro Mac |
+| `install.sh` | El instalador de una línea: descarga y verifica los archivos de la versión, instala FUSE-T, el helper y la app |
+| `install-from-source.sh` | El instalador de la versión 1: compila la app en tu Mac (Homebrew + macFUSE) |
+| `Backend.swift` | Qué capa FUSE se usa (FUSE-T o macFUSE) y cómo detectarla |
+| `release/` | Scripts que construyen los archivos de la versión (app universal, ntfs-3g para FUSE-T) y el código fuente fijado de ntfs-3g |
 | `test.sh` | Pruebas sin root, sin disco y sin red |
 
 ### Modelo de seguridad
@@ -162,20 +167,16 @@ issue público.
 
 ## Llevarla a otro Mac
 
-Lo recomendado es lo mismo que aquí: copia la carpeta del proyecto y ejecuta `sh install.sh` en el otro Mac,
-que compila la app allí (una app compilada localmente no lleva la cuarentena de macOS, así que no salen
-avisos de Gatekeeper).
-
-`sh package.sh` también genera `dist/NTFS-Mount-<versión>.dmg` con la app, un acceso directo a Aplicaciones y
-un `README.txt`. En el otro Mac sigues necesitando macFUSE y ntfs-3g. La app va firmada con tu identidad
-local, no con un Developer ID, así que Gatekeeper la bloqueará la primera vez:
-`xattr -dr com.apple.quarantine "/Applications/NTFS Mount.app"`.
+Ejecuta el mismo instalador de una línea en el otro Mac. (`sh package.sh` todavía puede generar un `.dmg`, pero un
+`.dmg` descargado activa Gatekeeper; el instalador no.)
 
 ## Mantenimiento
 
-- **`brew upgrade ntfs-3g-mac`:** la copia privada queda desfasada pero sigue funcionando. El menú muestra
+- **Actualizar NTFS Mount:** vuelve a ejecutar el instalador. Reemplaza la app, el helper y ntfs-3g, y si creaste el
+  certificado local macOS conserva tu permiso de Acceso total al disco.
+- **Modo macFUSE:** `brew upgrade ntfs-3g-mac` deja la copia privada desfasada pero sigue funcionando; el menú muestra
   **Actualizar copia de ntfs-3g (viejo → nuevo)…** para refrescarla.
-- **macFUSE:** Ajustes → Avanzado → **Buscar actualizaciones de macFUSE…** (la única vez que la app usa la red, y solo
+- **FUSE-T / macFUSE:** Ajustes → Avanzado → **Buscar actualizaciones de …** (la única vez que la app usa la red, y solo
   si lo pides). Tras actualizar hay que aprobar la extensión otra vez y reiniciar.
 - **Si cambias el helper o los scripts:** vuelve a pulsar «Activar…»; la app detecta que la copia
   instalada difiere de la del paquete.
@@ -195,17 +196,20 @@ local, no con un Developer ID, así que Gatekeeper la bloqueará la primera vez:
 
 ## Desinstalar
 
-1. Ajustes → Avanzado → **Desinstalar componentes privilegiados…** (quita sudoers, helper y copia
-   privada, y el inicio de sesión). Expulsa antes los discos montados.
-2. Salir de la app y borrar lo demás:
+```sh
+curl -fsSL https://raw.githubusercontent.com/Juanalfaros/ntfs-mount/main/install.sh | sh -s -- --uninstall
+```
 
-   ```sh
-   rm -rf ~/Applications/"NTFS Mount.app"
-   defaults delete local.ntfsmount
-   rm -f ~/Library/Logs/NTFSMount.log
-   security delete-certificate -c "NTFS Mount Local"   # solo si creaste el certificado
-   brew uninstall ntfs-3g-mac && brew uninstall --cask macfuse   # opcional
-   ```
+quita la app, el helper, la regla de sudoers y la copia privada de ntfs-3g. FUSE-T se queda (se quita con
+`"/Library/Application Support/fuse-t/uninstall.sh"`). Expulsa antes tus discos. Para limpiar el resto:
+
+```sh
+defaults delete local.ntfsmount
+rm -f ~/Library/Logs/NTFSMount.log
+security delete-certificate -c "NTFS Mount Local"   # solo si creaste el certificado
+```
+
+Después quita **NTFS Mount** de *Acceso total al disco* en Ajustes del Sistema.
 
 ## Desarrollo
 
@@ -236,10 +240,13 @@ la línea `cp` que copia la carpeta `.lproj`, y ejecuta `sh test.sh`.
 - No sustituye a `chkdsk`: si un disco está dañado, repáralo en Windows.
 - Se apoya en la extensión de kernel de macFUSE, que Apple puede desaprobar en cualquier actualización.
 - Los volúmenes cifrados con BitLocker no están soportados.
+- Con FUSE-T no se conservan los atributos extendidos (algunas etiquetas del Finder y marcas de cuarentena) al copiar archivos al disco.
+- El Acceso total al disco es obligatorio y el instalador no puede concederlo.
 
 ## Licencia
 
-[MIT](LICENSE). NTFS Mount no incluye ni redistribuye ntfs-3g ni macFUSE: usa las copias que tú instalas.
+[MIT](LICENSE). La versión incluye una compilación de ntfs-3g (GPL) con su código fuente exacto; FUSE-T y macFUSE no
+se incluyen: los instalas tú (el instalador descarga FUSE-T de sus autores).
 Mira [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). No está afiliada a Tuxera, al proyecto ntfs-3g, a
 macFUSE ni a Apple.
 
