@@ -22,8 +22,12 @@ OUT="$(mkdir -p "${1:-dist-release}" && cd "${1:-dist-release}" && pwd)"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 sha() { [ "$(shasum -a 256 "$1" | cut -d' ' -f1)" = "$2" ] || { echo "checksum mismatch for $1" >&2; exit 1; }; }
 
-echo "Downloading ntfs-3g $NTFS3G_VERSION and FUSE-T ${FUSET_VERSION}…"
-curl -fsSL -o "$W/ntfs-3g.tgz" "$NTFS3G_URL";  sha "$W/ntfs-3g.tgz" "$NTFS3G_SHA256"
+echo "Fetching ntfs-3g $NTFS3G_VERSION and FUSE-T ${FUSET_VERSION}…"
+# The exact upstream tarball is kept in this repository (release/sources): tuxera.com refuses downloads from
+# some servers, and the GPL wants the source to travel with the binary anyway.
+LOCAL_SRC="$(cd "$(dirname "$0")" && pwd)/sources/ntfs-3g_ntfsprogs-$NTFS3G_VERSION.tgz"
+if [ -f "$LOCAL_SRC" ]; then cp "$LOCAL_SRC" "$W/ntfs-3g.tgz"; else curl -fsSL -o "$W/ntfs-3g.tgz" "$NTFS3G_URL"; fi
+sha "$W/ntfs-3g.tgz" "$NTFS3G_SHA256"
 curl -fsSL -o "$W/fuse-t.pkg" "$FUSET_URL";    sha "$W/fuse-t.pkg" "$FUSET_SHA256"
 
 # FUSE-T headers and library, taken out of the installer without installing it. The path must not contain spaces.
